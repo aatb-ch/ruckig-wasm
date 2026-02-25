@@ -6,20 +6,14 @@ Created by AATB (and Claude) for experimenting with browser/node based robot con
 
 ## Demo
 
-Open `index.html` in a browser (requires a local HTTP server for WASM loading):
-
-```bash
-python3 -m http.server 8080
-```
-
-Features: position targets, constraint profiles, live jog, and Perlin noise target tracking.
+**[Live demo](https://aatb-ch.github.io/ruckig-wasm/)** — position targets, constraint profiles, live jog, and Perlin noise target tracking.
 
 ## Building
 
 Requires [Emscripten](https://emscripten.org/).
 
 ```bash
-git clone --recursive https://github.com/aatb/ruckig-wasm.git
+git clone --recursive https://github.com/aatb-ch/ruckig-wasm.git
 cd ruckig-wasm
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk && ./emsdk install latest && ./emsdk activate latest && cd ..
