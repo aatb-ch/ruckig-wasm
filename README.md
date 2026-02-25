@@ -50,6 +50,42 @@ createRuckigModule().then(function(Module) {
 });
 ```
 
+## API
+
+### Constructor
+
+- `new Module.RuckigJoint(delta_time)` — create a joint with the given timestep in seconds (e.g. `0.001` for 1ms)
+
+### Control
+
+| Method | Description |
+|--------|-------------|
+| `setTargetPosition(pos)` | Move to target position (switches to position control) |
+| `setTargetVelocity(vel)` | Jog at target velocity (switches to velocity control) |
+| `stop()` | Decelerate to zero velocity |
+| `setConstraints(max_vel, max_accel, max_jerk)` | Set kinematic limits |
+| `setCurrentState(pos, vel, accel)` | Force-set current state (resets the planner) |
+| `update()` | Advance one timestep. Returns `0` = working, `1` = finished, `< 0` = error |
+
+### State
+
+| Method | Description |
+|--------|-------------|
+| `getPosition()` | Current position after last `update()` |
+| `getVelocity()` | Current velocity |
+| `getAcceleration()` | Current acceleration |
+| `getJerk()` | Current jerk |
+| `getTime()` | Elapsed time since trajectory start |
+| `getDuration()` | Total duration of the current trajectory |
+| `isRunning()` | `true` if the trajectory is still in progress |
+| `getCurrentPosition()` | Input position (before next `update()`) |
+| `getCurrentVelocity()` | Input velocity |
+| `getCurrentAcceleration()` | Input acceleration |
+
+### Cleanup
+
+- `joint.delete()` — free WASM memory when done
+
 ## Building
 
 Requires [Emscripten](https://emscripten.org/).
