@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruckig WASM - Single Axis Servo Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'Courier New', monospace;
+    background: #fff;
+    color: #000;
+    padding: 20px;
+}
+h1 {
+    margin-bottom: 2px;
+    font-size: 1.3em;
+}
+.subtitle {
+    color: #666;
+    margin-bottom: 20px;
+    font-size: 0.8em;
+}
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+.panel {
+    border: 1px solid #000;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+.panel-title {
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.state-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.state-item { text-align: center; }
+.state-label {
+    font-size: 0.7em;
+    color: #666;
+    text-transform: uppercase;
+}
+.state-value {
+    font-size: 1.5em;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+}
+.state-unit {
+    font-size: 0.65em;
+    color: #666;
+}
+.btn-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.btn {
+    padding: 6px 14px;
+    border: 1px solid #000;
+    background: #fff;
+    color: #000;
+    font-family: inherit;
+    font-size: 0.85em;
+    cursor: pointer;
+    min-width: 80px;
+    text-align: center;
+}
+.btn:hover { background: #eee; }
+.btn.active {
+    background: #000;
+    color: #fff;
+}
+.btn.jog {
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+.btn.jog.pressed {
+    background: #000;
+    color: #fff;
+}
+.btn.stop-btn {
+    border-width: 2px;
+}
+.row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.row:last-child { margin-bottom: 0; }
+.row-label {
+    font-size: 0.75em;
+    color: #666;
+    min-width: 110px;
+    text-transform: uppercase;
+}
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75em;
+    color: #666;
+    margin-top: 4px;
+}
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    border: 1px solid #000;
+    background: #fff;
+}
+.status-indicator.running { background: #000; }
+canvas {
+    width: 100%;
+    height: 200px;
+    border: 1px solid #000;
+    background: #fff;
+}
+.chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.7em;
+    color: #000;
+    margin-top: 4px;
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-color {
+    width: 14px;
+    height: 3px;
+}
+#loading {
+    padding: 40px;
+    font-size: 1em;
+}
+.constraint-info {
+    font-size: 0.75em;
+    color: #666;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Ruckig WASM - Servo Demo</h1>
+    <div class="subtitle">Time-optimal jerk-constrained trajectory generation in the browser</div>
+
+    <div id="loading">Loading WASM module...</div>
+
+    <div id="app" style="display:none">
+        <div class="panel">
+            <div class="panel-title">Servo State</div>
+            <div class="state-grid">
+                <div class="state-item">
+                    <div class="state-label">Position</div>
+                    <div class="state-value" id="val-pos">0.00</div>
+                    <div class="state-unit">deg</div>
+                </div>
+                <div class="state-item">
+                    <div class="state-label">Velocity</div>
+                    <div class="state-value" id="val-vel">0.00</div>
+                    <div class="state-unit">deg/s</div>
+                </div>
+                <div class="state-item">
+                    <div class="state-label">Acceleration</div>
+                    <div class="state-value" id="val-acc">0.00</div>
+                    <div class="state-unit">deg/s&sup2;</div>
+                </div>
+                <div class="state-item">
+                    <div class="state-label">Jerk</div>
+                    <div class="state-value" id="val-jerk">0.00</div>
+                    <div class="state-unit">deg/s&sup3;</div>
+                </div>
+            </div>
+            <div class="status-bar">
+                <span><span class="status-indicator" id="status-dot"></span><span id="status-text">Idle</span></span>
+                <span>dt=1ms | t=<span id="val-time">0.000</span>s | duration=<span id="val-dur">0.000</span>s</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Trajectory Plot</div>
+            <canvas id="chart"></canvas>
+            <div class="chart-legend">
+                <div class="legend-item"><div class="legend-color" style="background:#e00"></div>Position (deg)</div>
+                <div class="legend-item"><div class="legend-color" style="background:#07c"></div>Velocity (deg/s)</div>
+                <div class="legend-item"><div class="legend-color" style="background:#e80"></div>Acceleration (deg/s&sup2;)</div>
+                <div class="legend-item"><div class="legend-color" style="background:#90c"></div>Jerk (deg/s&sup3;)</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Target Position</div>
+            <div class="row">
+                <div class="row-label">Go to:</div>
+                <div class="btn-group">
+                    <button class="btn" onclick="goTo(0)">0&deg;</button>
+                    <button class="btn" onclick="goTo(90)">90&deg;</button>
+                    <button class="btn" onclick="goTo(180)">180&deg;</button>
+                    <button class="btn" onclick="goTo(360)">360&deg;</button>
+                    <button class="btn" onclick="goTo(3600)">3600&deg;</button>
+                    <button class="btn" onclick="goTo(-360)">-360&deg;</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Constraint Profile</div>
+            <div class="row">
+                <div class="row-label">Max velocity:</div>
+                <div class="btn-group" id="vel-btns">
+                    <button class="btn" onclick="setProfile(0)" data-idx="0">10 deg/s</button>
+                    <button class="btn" onclick="setProfile(1)" data-idx="1">90 deg/s</button>
+                    <button class="btn active" onclick="setProfile(2)" data-idx="2">180 deg/s</button>
+                    <button class="btn" onclick="setProfile(3)" data-idx="3">720 deg/s</button>
+                </div>
+            </div>
+            <div class="row" style="margin-top:4px">
+                <div class="row-label"></div>
+                <span class="constraint-info" id="constraint-info">v=180 a=1000 j=5000</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title">Live Jog / Noise Tracking</div>
+            <div class="row">
+                <div class="row-label">Jog:</div>
+                <div class="btn-group">
+                    <button class="btn jog" id="jog-neg" data-dir="-1">- Negative</button>
+                    <button class="btn jog" id="jog-pos" data-dir="1">+ Positive</button>
+                    <button class="btn stop-btn" onclick="stopServo()">STOP</button>
+                </div>
+            </div>
+            <div class="row" style="margin-top:6px">
+                <div class="row-label">Noise track:</div>
+                <div class="btn-group">
+                    <button class="btn" id="noise-btn" onclick="toggleNoise()">Start</button>
+                </div>
+                <span class="constraint-info" id="noise-info">target: --</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="dist/ruckig.js"></script>
+<script>
+const DELTA_TIME = 0.001;
+const HISTORY_SECONDS = 5;
+const HISTORY_LEN = Math.floor(HISTORY_SECONDS / DELTA_TIME);
+
+const profiles = [
+    { maxVel: 10,  maxAccel: 50,   maxJerk: 200 },
+    { maxVel: 90,  maxAccel: 500,  maxJerk: 2000 },
+    { maxVel: 180, maxAccel: 1000, maxJerk: 5000 },
+    { maxVel: 720, maxAccel: 4000, maxJerk: 20000 },
+];
+
+let servo = null;
+let currentProfile = 2;
+let jogDir = 0;
+let animFrame = null;
+let noiseActive = false;
+let noiseTime = 0;
+
+// Perlin noise (classic 1D, hash-based)
+const PERLIN_P = new Uint8Array(512);
+(function initPerlin() {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+    }
+    for (let i = 0; i < 512; i++) PERLIN_P[i] = p[i & 255];
+})();
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp(a, b, t) { return a + t * (b - a); }
+function grad1d(hash, x) { return (hash & 1) === 0 ? x : -x; }
+
+function perlin1d(x) {
+    const xi = Math.floor(x) & 255;
+    const xf = x - Math.floor(x);
+    const u = fade(xf);
+    return lerp(grad1d(PERLIN_P[xi], xf), grad1d(PERLIN_P[xi + 1], xf - 1), u);
+}
+
+// 4-octave Perlin noise, tuned so fast octaves can swing ~360deg/s
+function perlinFbm(t) {
+    // Octave frequencies chosen so the fastest octave traverses
+    // the full range in ~1s: freq=2.0 * amplitude=0.3 * 360 ~ 216 deg
+    // Combined with lower octaves the total swing can exceed 360deg/s
+    return (
+        perlin1d(t * 0.25) * 1.0 +   // slow drift
+        perlin1d(t * 0.7)  * 0.5 +   // medium
+        perlin1d(t * 2.0)  * 0.3 +   // fast
+        perlin1d(t * 5.0)  * 0.15    // very fast bursts
+    ) / (1.0 + 0.5 + 0.3 + 0.15) * 360; // normalize to [-360, 360]
+}
+
+const history = {
+    pos: new Float32Array(HISTORY_LEN),
+    vel: new Float32Array(HISTORY_LEN),
+    acc: new Float32Array(HISTORY_LEN),
+    jerk: new Float32Array(HISTORY_LEN),
+    idx: 0,
+    filled: false,
+};
+
+function pushHistory(p, v, a, j) {
+    history.pos[history.idx] = p;
+    history.vel[history.idx] = v;
+    history.acc[history.idx] = a;
+    history.jerk[history.idx] = j;
+    history.idx++;
+    if (history.idx >= HISTORY_LEN) {
+        history.idx = 0;
+        history.filled = true;
+    }
+}
+
+function getHistoryArray(arr) {
+    const len = history.filled ? HISTORY_LEN : history.idx;
+    const result = new Float32Array(len);
+    if (history.filled) {
+        const tail = HISTORY_LEN - history.idx;
+        result.set(arr.subarray(history.idx, HISTORY_LEN), 0);
+        result.set(arr.subarray(0, history.idx), tail);
+    } else {
+        result.set(arr.subarray(0, len));
+    }
+    return result;
+}
+
+const elPos = document.getElementById('val-pos');
+const elVel = document.getElementById('val-vel');
+const elAcc = document.getElementById('val-acc');
+const elJerk = document.getElementById('val-jerk');
+const elTime = document.getElementById('val-time');
+const elDur = document.getElementById('val-dur');
+const elDot = document.getElementById('status-dot');
+const elStatus = document.getElementById('status-text');
+const elConstraint = document.getElementById('constraint-info');
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+
+function fmt(v, d=2) {
+    return v.toFixed(d);
+}
+
+function updateDisplay() {
+    const pos = servo.getPosition();
+    const vel = servo.getVelocity();
+    const acc = servo.getAcceleration();
+    const jerk = servo.getJerk();
+
+    elPos.textContent = fmt(pos);
+    elVel.textContent = fmt(vel);
+    elAcc.textContent = fmt(acc);
+    elJerk.textContent = fmt(jerk, 0);
+    elTime.textContent = fmt(servo.getTime(), 3);
+    elDur.textContent = fmt(servo.getDuration(), 3);
+
+    const isActive = servo.isRunning() || noiseActive;
+    elDot.className = 'status-indicator ' + (isActive ? 'running' : '');
+    elStatus.textContent = noiseActive ? 'Tracking' : (servo.isRunning() ? (jogDir !== 0 ? 'Jogging' : 'Moving') : 'Idle');
+}
+
+function drawChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    const W = rect.width;
+    const H = rect.height;
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    const posArr = getHistoryArray(history.pos);
+    const velArr = getHistoryArray(history.vel);
+    const accArr = getHistoryArray(history.acc);
+    const jerkArr = getHistoryArray(history.jerk);
+    const len = posArr.length;
+    if (len < 2) return;
+
+    const step = Math.max(1, Math.floor(len / W));
+
+    function range(arr) {
+        let mn = Infinity, mx = -Infinity;
+        for (let i = 0; i < arr.length; i += step) {
+            if (arr[i] < mn) mn = arr[i];
+            if (arr[i] > mx) mx = arr[i];
+        }
+        const pad = (mx - mn) * 0.1 || 1;
+        return { min: mn - pad, max: mx + pad };
+    }
+
+    const ranges = [range(posArr), range(velArr), range(accArr), range(jerkArr)];
+
+    function drawLine(arr, r, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < len; i += step) {
+            const x = (i / (len - 1)) * W;
+            const y = H - ((arr[i] - r.min) / (r.max - r.min)) * H;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    drawLine(posArr, ranges[0], '#e00');
+    drawLine(velArr, ranges[1], '#07c');
+    drawLine(accArr, ranges[2], '#e80');
+    drawLine(jerkArr, ranges[3], '#90c');
+
+    ctx.font = '10px Courier New';
+    const labels = [
+        { r: ranges[0], color: '#e00', label: 'P' },
+        { r: ranges[1], color: '#07c', label: 'V' },
+        { r: ranges[2], color: '#e80', label: 'A' },
+        { r: ranges[3], color: '#90c', label: 'J' },
+    ];
+    labels.forEach((l, i) => {
+        ctx.fillStyle = l.color;
+        ctx.fillText(`${l.label}:[${fmt(l.r.min,0)}..${fmt(l.r.max,0)}]`, 4, 12 + i * 12);
+    });
+}
+
+let lastFrameTime = null;
+let accumulator = 0;
+
+function simLoop(timestamp) {
+    animFrame = requestAnimationFrame(simLoop);
+
+    if (lastFrameTime === null) {
+        lastFrameTime = timestamp;
+        return;
+    }
+
+    const dtFrame = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = timestamp;
+    accumulator += dtFrame;
+
+    const maxSteps = Math.floor(accumulator / DELTA_TIME);
+    const stepsToRun = Math.min(maxSteps, 200);
+    accumulator -= stepsToRun * DELTA_TIME;
+    if (accumulator > DELTA_TIME * 10) accumulator = 0;
+
+    for (let i = 0; i < stepsToRun; i++) {
+        if (noiseActive) {
+            noiseTime += DELTA_TIME;
+            const target = perlinFbm(noiseTime);
+            servo.setTargetPosition(target);
+        }
+        servo.update();
+        pushHistory(
+            servo.getPosition(),
+            servo.getVelocity(),
+            servo.getAcceleration(),
+            servo.getJerk()
+        );
+    }
+
+    if (noiseActive) {
+        document.getElementById('noise-info').textContent = 'target: ' + fmt(perlinFbm(noiseTime)) + '\u00b0';
+    }
+    updateDisplay();
+    drawChart();
+}
+
+function goTo(deg) {
+    jogDir = 0;
+    stopNoise();
+    servo.setTargetPosition(deg);
+}
+
+function setProfile(idx) {
+    currentProfile = idx;
+    const p = profiles[idx];
+    servo.setConstraints(p.maxVel, p.maxAccel, p.maxJerk);
+    elConstraint.textContent = `v=${p.maxVel} a=${p.maxAccel} j=${p.maxJerk}`;
+
+    document.querySelectorAll('#vel-btns .btn').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.idx) === idx);
+    });
+}
+
+function startJog(dir) {
+    stopNoise();
+    jogDir = dir;
+    const p = profiles[currentProfile];
+    servo.setTargetVelocity(dir * p.maxVel);
+}
+
+function stopJog() {
+    if (jogDir !== 0) {
+        jogDir = 0;
+        servo.stop();
+    }
+}
+
+function stopServo() {
+    jogDir = 0;
+    stopNoise();
+    servo.stop();
+}
+
+function toggleNoise() {
+    if (noiseActive) {
+        stopNoise();
+    } else {
+        jogDir = 0;
+        noiseActive = true;
+        noiseTime = Math.random() * 1000; // random start offset
+        document.getElementById('noise-btn').classList.add('active');
+        document.getElementById('noise-btn').textContent = 'Stop';
+    }
+}
+
+function stopNoise() {
+    if (noiseActive) {
+        noiseActive = false;
+        document.getElementById('noise-btn').classList.remove('active');
+        document.getElementById('noise-btn').textContent = 'Start';
+        document.getElementById('noise-info').textContent = 'target: --';
+    }
+}
+
+function setupJogButton(el) {
+    const dir = parseInt(el.dataset.dir);
+
+    function onDown(e) {
+        e.preventDefault();
+        el.classList.add('pressed');
+        startJog(dir);
+
+        function onUp() {
+            el.classList.remove('pressed');
+            stopJog();
+            document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mouseup', onUp);
+    }
+
+    el.addEventListener('mousedown', onDown);
+    el.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        el.classList.add('pressed');
+        startJog(dir);
+    }, { passive: false });
+    el.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        el.classList.remove('pressed');
+        stopJog();
+    }, { passive: false });
+    el.addEventListener('touchcancel', (e) => {
+        e.preventDefault();
+        el.classList.remove('pressed');
+        stopJog();
+    }, { passive: false });
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.key === 'ArrowLeft') startJog(-1);
+    else if (e.key === 'ArrowRight') startJog(1);
+    else if (e.key === 'Escape' || e.key === ' ') stopServo();
+});
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') stopJog();
+});
+
+createRuckigModule().then(Module => {
+    servo = new Module.RuckigJoint(DELTA_TIME);
+    setProfile(currentProfile);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    setupJogButton(document.getElementById('jog-neg'));
+    setupJogButton(document.getElementById('jog-pos'));
+
+    animFrame = requestAnimationFrame(simLoop);
+});
+</script>
+</body>
+</html>
