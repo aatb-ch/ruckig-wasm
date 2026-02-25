@@ -8,6 +8,26 @@ Created by AATB (and Claude) for experimenting with browser/node based robot con
 
 **[Live demo](https://aatb-ch.github.io/ruckig-wasm/)** — position targets, constraint profiles, live jog, and Perlin noise target tracking.
 
+## Browser Usage
+
+```html
+<script src="dist/ruckig.js"></script>
+<script>
+createRuckigModule().then(function(Module) {
+    var joint = new Module.RuckigJoint(0.001); // 1ms timestep
+    joint.setConstraints(180, 360, 1000);      // deg/s, deg/s², deg/s³
+    joint.setTargetPosition(90);
+
+    // step until target is reached
+    var result;
+    do { result = joint.update(); } while (result === 0);
+
+    console.log(joint.getPosition()); // 90.0
+    joint.delete();
+});
+</script>
+```
+
 ## Node.js Usage
 
 ```bash
